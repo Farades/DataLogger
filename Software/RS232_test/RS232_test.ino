@@ -13,22 +13,22 @@ void setup() {
   Serial.println("Hello SPB-30!");
 
   // set the data rate for the SoftwareSerial port
-  mySerial.begin(2400);
+  SPBSerial.begin(2400);
 }
 
 void loop() { // run over and over
   Serial.println("Send QPI");
-  mySerial.print("QGS \r");
+  SPBSerial.print("QGS \r");
   delay(300);
   
   int i=0;
   char buffer[1000];
-  if (mySerial.available() > 0)
+  if (SPBSerial.available() > 0)
   {
     delay(30);
-    while(mySerial.available()) 
+    while(SPBSerial.available()) 
     {
-      buffer[i++] = mySerial.read();
+      buffer[i++] = SPBSerial.read();
     }
     buffer[i++]='\0';
   }

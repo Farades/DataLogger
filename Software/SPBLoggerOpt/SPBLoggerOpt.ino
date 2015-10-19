@@ -7,60 +7,80 @@
 
 #define LOG_INTERVAL  5000 // mills between entries (reduce to take more/faster data)
 #define SYNC_INTERVAL 5000 // mills between calls to flush() - to write data to the card
-#define ECHO_TO_SERIAL   1 // echo data to serial port
+#define ECHO_TO_SERIAL   1 // Дублирование информации в Serial порт (вкл/выкл)
+#define ERR_LED_PIN      111 //Пин светодиода
 
-RTC_DS1307 RTC;
-char FileName[] = "00.csv"; //File name is day-hour minute
-char FolderName[] = "00-00-00"; //Folder is year-month
-char file[8]; //File name character storage
-char folder[10]; //Folder name character storage
-char location[20]; //location for file to be created
-File logFile;
-SoftwareSerial SPBSerial(A3, A2);
+RTC_DS1307 RTC; //Объект для работы с часами реального времени
+File logFile;   //Объект для работы с файлом
+SoftwareSerial SPBSerial(A3, A2); //Объект для работы с софтверным Serial портом
+
+char FileName[]   = "00.csv";   //Имя файла (номер часа)
+char FolderName[] = "00-00-00"; //Имя папки (гг-мм-дд)
+char file[8];                   //Буфер для имени файла
+char folder[10];                //Буфер для имени папки
+char location[22];              //Буфер для хранение целого пути до файла
+
+
 uint32_t syncTime = 0; // time of last sync()
 String inputString = "";
+boolean err = false;
 
 void setup() {
   Serial.begin(115200);
   SPBSerial.begin(2400);
   inputString.reserve(100);
-  Wire.begin(); //Important for RTClib.h
+
+  pinMode(ERR_LED_PIN, OUTPUT);
+  digitalWrite(ERR_LED_PIN, LOW);
+
+  //Инициализация RTC
+  Wire.begin();
   RTC.begin();
-  if (! RTC.isrunning()) {
-    Serial.println("RTC is NOT running!");
+  if (!RTC.isrunning()) {
+    Serial.println("RTCe");
+    err = true;
     return;
   }
-  Serial.print("Initializing SD card..."); 
+  //RTC.adjust(DateTime(__DATE__, __TIME__));
+
+  //Инициализация SD
   pinMode(10, OUTPUT);
   if (!SD.begin(10)) {
-    Serial.println("initialization failed!");
+    Serial.println("SDe");
+    err = true;
     return;
   }
-  Serial.println("initialization done.");
 } 
 
 void loop() {
-delay((LOG_INTERVAL -1) - (millis() % LOG_INTERVAL));
+  if (err) {
+    digitalWrite(ERR_LED_PIN, HIGH);
+  }
+  
+  delay((LOG_INTERVAL -1) - (millis() % LOG_INTERVAL));
   
   getFolderName();
   createFolder();
   getFileName();
   createFile();
-  
+
   writeTime();
   writeSPBMode();
   writeSPBGenerealParams();
   writeSPBWarnings();
   writeSPBErrors();
+  
   logFile.println();
 #if ECHO_TO_SERIAL
   Serial.println();  
 #endif //ECHO_TO_SERIAL
-  if ((millis() - syncTime) < SYNC_INTERVAL) return;
-  syncTime = millis();
+
+  sdSync();
+}
+
+void sdSync() {
   logFile.flush();
   logFile.close();
-  
 }
 
 void getFolderName() {
@@ -100,17 +120,27 @@ void createFile(){
   strcat(location, folder);
   strcat(location, "/");
   strcat(location, file);
-  Serial.print("Location: ");
-  Serial.print(location);
   if (SD.exists(location)) {
+    Serial.print(location);
     Serial.println(" exists.");
     logFile = SD.open(location, FILE_WRITE);
   }
   else {
-    Serial.print(" doesn't exist. ");
     Serial.print("Creating new file ");
-    Serial.println(FileName);
+    Serial.println(location);
     logFile = SD.open(location, FILE_WRITE);
+    logFile.print("Date,Time,Mode,V_in,F_in,V_out,F_out,I_out,Load,Pos_DC,Neg_DC,V_bat,Temp,");
+    Serial.print("Date,Time,mode,V_in,F_in,V_out,F_out,I_out,Load,Pos_DC,Neg_DC,V_bat,Temp,");
+    for (int i = 0; i < 56; i++) {
+      logFile.print("a");
+      logFile.print(i);
+      logFile.print(",");
+      Serial.print("a");
+      Serial.print(i);
+      Serial.print(",");
+    }
+    logFile.println("Error");
+    Serial.println("Error");
   } 
 }
 
@@ -118,30 +148,64 @@ void writeTime() {
   DateTime now = RTC.now();
   logFile.print(now.year(), DEC);
   logFile.print("/");
+  
   logFile.print(now.month(), DEC);
+  byte month = (byte)now.month();
+  String monthStr = String(month);
+  if (month < 10) {
+    monthStr = "0" + String(month);
+  }
   logFile.print("/");
-  logFile.print(now.day(), DEC);
-  logFile.print(" ");
-  logFile.print(now.hour(), DEC);
+
+  byte day = (byte)now.day();
+  String dayStr = String(day);
+  if (day < 10) {
+    dayStr = "0" + String(day);
+  }
+  logFile.print(dayStr);
+  logFile.print(",");
+
+  byte hour = (byte)now.hour();
+  String hourStr = String(hour);
+  if (hour < 10) {
+    hourStr = "0" + String(hour);
+  }
+  logFile.print(hourStr);
   logFile.print(":");
-  logFile.print(now.minute(), DEC);
+
+  byte minute = (byte)now.minute();
+  String minuteStr = String(minute);
+  if (minute < 10) {
+    minuteStr = "0" + String(minute);
+  }
+  logFile.print(minuteStr);
   logFile.print(":");
-  logFile.print(now.second(), DEC);
+
+  byte second = (byte)now.second();
+  String secondStr = String(second);
+  if (second < 10) {
+    secondStr = "0" + String(second);
+  }
+  logFile.print(secondStr);
 #if ECHO_TO_SERIAL
   Serial.print(now.year(), DEC);
   Serial.print("/");
-  Serial.print(now.month(), DEC);
+  Serial.print(monthStr);
   Serial.print("/");
-  Serial.print(now.day(), DEC);
-  Serial.print(" ");
-  Serial.print(now.hour(), DEC);
+  Serial.print(dayStr);
+  Serial.print(",");
+  Serial.print(hourStr);
   Serial.print(":");
-  Serial.print(now.minute(), DEC);
+  Serial.print(minuteStr);
   Serial.print(":");
-  Serial.print(now.second(), DEC);
+  Serial.print(secondStr);
 #endif //ECHO_TO_SERIAL
 }
 
+/**
+ * Метод, обрабатывающий события программного Serial порта.
+ * Сохраняет все полученные данные в строку inputString.
+ */
 void SPBserialEvent() {
   while (SPBSerial.available()) {
     char inChar = (char)SPBSerial.read();
@@ -149,28 +213,51 @@ void SPBserialEvent() {
   }
 }
 
-void validateInStr(int strLength) {
+/**
+ * Метод, валидирующий полученную в методе SPBserialEvent строку.
+ * Валидация проходит по длине строки и наличию стартового символа "("
+ * Если строка не прошла валидацию, то она очищается
+ */
+boolean validateInStr(int strLength) {
+  boolean res = true;
   if (inputString.length() != strLength) {
-//    Serial.print(ERR);
+    inputString = "";
+    res = false;
   } else if (inputString.indexOf("(") != 0) {
-//    Serial.print(ERR);
+    inputString = "";
+    res = false;
   } else {
      inputString = inputString.substring(1);
   }
+  return res;
 }
 
+/**
+ * Метод, записывающий режим работы ИБП
+ */
 void writeSPBMode() {
   SPBSerial.print("QMOD \r");
   delay(50);
 
   SPBserialEvent();
-  validateInStr(3);
-  logFile.print(",");    
-  logFile.print(inputString.substring(0,1));
+  boolean validate = validateInStr(3);
+
+  logFile.print(",");
+  if (validate) {
+    logFile.print(inputString.substring(0,1));  
+    err = false;
+  } else {
+    err = true;
+  }
+  
+  
 #if ECHO_TO_SERIAL
-  Serial.print(",");    
-  Serial.print(inputString.substring(0,1));
+  Serial.print(",");  
+  if (validate) {
+    Serial.print(inputString.substring(0,1));  
+  }  
 #endif //ECHO_TO_SERIAL
+
   inputString = "";
 }
 
@@ -179,31 +266,60 @@ void writeSPBGenerealParams() {
   delay(200);
   
   SPBserialEvent();
-  validateInStr(63);
+  boolean validate = validateInStr(63);
   
   logFile.print(","); 
-  logFile.print(inputString.substring(0,5));logFile.print(",");
-  logFile.print(inputString.substring(6,10));logFile.print(",");
-  logFile.print(inputString.substring(11, 16));logFile.print(",");
-  logFile.print(inputString.substring(17,21));logFile.print(",");
-  logFile.print(inputString.substring(22,27));logFile.print(",");
-  logFile.print(inputString.substring(28,31));logFile.print(",");
-  logFile.print(inputString.substring(32,37));logFile.print(",");
-  logFile.print(inputString.substring(38,43));logFile.print(",");
-  logFile.print(inputString.substring(44,49));logFile.print(",");
-  logFile.print(inputString.substring(56,61));
+  if (validate) {
+    logFile.print(inputString.substring(0,5));logFile.print(",");
+    logFile.print(inputString.substring(6,10));logFile.print(",");
+    logFile.print(inputString.substring(11, 16));logFile.print(",");
+    logFile.print(inputString.substring(17,21));logFile.print(",");
+    logFile.print(inputString.substring(22,27));logFile.print(",");
+    logFile.print(inputString.substring(28,31));logFile.print(",");
+    logFile.print(inputString.substring(32,37));logFile.print(",");
+    logFile.print(inputString.substring(38,43));logFile.print(",");
+    logFile.print(inputString.substring(44,49));logFile.print(",");
+    logFile.print(inputString.substring(56,61));
+
+    err = false;
+  } else {
+    err = true;
+    logFile.print(",");
+    logFile.print(",");
+    logFile.print(",");
+    logFile.print(",");
+    logFile.print(",");
+    logFile.print(",");
+    logFile.print(",");
+    logFile.print(",");
+    logFile.print(",");
+  }
+  
 #if ECHO_TO_SERIAL
   Serial.print(","); 
-  Serial.print(inputString.substring(0,5));Serial.print(","); 
-  Serial.print(inputString.substring(6,10));Serial.print(","); 
-  Serial.print(inputString.substring(11, 16));Serial.print(","); 
-  Serial.print(inputString.substring(17,21));Serial.print(","); 
-  Serial.print(inputString.substring(22,27));Serial.print(","); 
-  Serial.print(inputString.substring(28,31));Serial.print(","); 
-  Serial.print(inputString.substring(32,37));Serial.print(","); 
-  Serial.print(inputString.substring(38,43));Serial.print(","); 
-  Serial.print(inputString.substring(44,49));Serial.print(","); 
-  Serial.print(inputString.substring(56,61));
+  if (validate) {
+    Serial.print(inputString.substring(0,5));Serial.print(","); 
+    Serial.print(inputString.substring(6,10));Serial.print(","); 
+    Serial.print(inputString.substring(11, 16));Serial.print(","); 
+    Serial.print(inputString.substring(17,21));Serial.print(","); 
+    Serial.print(inputString.substring(22,27));Serial.print(","); 
+    Serial.print(inputString.substring(28,31));Serial.print(","); 
+    Serial.print(inputString.substring(32,37));Serial.print(","); 
+    Serial.print(inputString.substring(38,43));Serial.print(","); 
+    Serial.print(inputString.substring(44,49));Serial.print(","); 
+    Serial.print(inputString.substring(56,61));
+  } else {
+    Serial.print(",");
+    Serial.print(",");
+    Serial.print(",");
+    Serial.print(",");
+    Serial.print(",");
+    Serial.print(",");
+    Serial.print(",");
+    Serial.print(",");
+    Serial.print(",");
+  }
+  
 #endif //ECHO_TO_SERIAL
   inputString = "";
 }
@@ -211,16 +327,31 @@ void writeSPBGenerealParams() {
 void writeSPBWarnings() {
   SPBSerial.print("QWS \r");
   delay(200);
+  
 
   SPBserialEvent();
-  validateInStr(63);
-
+  boolean validate = validateInStr(63);
+  
   logFile.print(","); 
-  logFile.print(inputString);
-#if ECHO_TO_SERIAL
-  Serial.print(","); 
-  Serial.print(inputString);
-#endif //ECHO_TO_SERIAL
+  Serial.print(",");
+  int warningCount = 56;
+
+  if (validate) {
+    err = false;
+    for (int i = 0; i < warningCount; i++) {
+      logFile.print(inputString.substring(i, i+1)); 
+      Serial.print(inputString.substring(i, i+1)); 
+      logFile.print(",");
+      Serial.print(",");
+    }
+  } else {
+    err = true;
+    for (int i = 0; i < warningCount; i++) {
+      logFile.print(",");
+      Serial.print(",");
+    }
+  }
+
   inputString = "";
 }
 
@@ -229,13 +360,14 @@ void writeSPBErrors() {
   delay(200);
 
   SPBserialEvent();
-  validateInStr(63);
+  boolean validate = validateInStr(63);
 
-  logFile.print(","); 
-  logFile.print(inputString);
-#if ECHO_TO_SERIAL
-  Serial.print(","); 
-  Serial.print(inputString);
-#endif //ECHO_TO_SERIAL
+  if (validate) {
+    err = false;
+    logFile.print(inputString);
+    Serial.print(inputString);
+  } else {
+    err = true;
+  }  
   inputString = "";
 }

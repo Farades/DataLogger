@@ -32,7 +32,7 @@ void setup() {
   Wire.begin();
   Serial.begin(9600);
   delay(2000); // This delay allows the MCU to read the current date and time.
- 
+  
   Serial.print("The current date and time is: ");
   printTime();
   Serial.println("Please change to newline ending the settings on the lower right of the Serial Monitor");

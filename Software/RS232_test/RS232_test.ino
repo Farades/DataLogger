@@ -2,9 +2,12 @@
 
 SoftwareSerial SPBSerial(A3, A2); //Serial 
 
+String inputString = "";
+                      
 void setup() {
   // Open serial communications and wait for port to open:
   Serial.begin(9600);
+  String inputString = "";
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
@@ -21,21 +24,16 @@ void loop() { // run over and over
   SPBSerial.print("QGS \r");
   delay(300);
   
-  int i=0;
-  char buffer[1000];
-  if (SPBSerial.available() > 0)
-  {
-    delay(30);
-    while(SPBSerial.available()) 
-    {
-      buffer[i++] = SPBSerial.read();
-    }
-    buffer[i++]='\0';
-  }
-
-  if (i > 0) {
-    Serial.println(String(buffer));
-  }
+  SPBserialEvent();
+  Serial.println(inputString);
+  inputString = "";
 
   delay(1000);
+}
+
+void SPBserialEvent() {
+  while (SPBSerial.available()) {
+    char inChar = (char)SPBSerial.read();
+    inputString += inChar;
+  }
 }

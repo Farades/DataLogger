@@ -5,8 +5,7 @@
 #include <string.h>
 #include <SoftwareSerial.h>
 
-#define LOG_INTERVAL  5000 // mills between entries (reduce to take more/faster data)
-#define SYNC_INTERVAL 5000 // mills between calls to flush() - to write data to the card
+#define LOG_INTERVAL  2000 // mills between entries (reduce to take more/faster data)
 #define ECHO_TO_SERIAL   1 // Дублирование информации в Serial порт (вкл/выкл)
 #define ERR_LED_PIN      111 //Пин светодиода
 

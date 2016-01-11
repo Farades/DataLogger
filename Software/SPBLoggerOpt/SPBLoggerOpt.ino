@@ -40,7 +40,7 @@ void setup() {
     err = true;
     return;
   }
-  //RTC.adjust(DateTime(__DATE__, __TIME__));
+  RTC.adjust(DateTime(__DATE__, __TIME__));
 
   //Инициализация SD
   pinMode(10, OUTPUT);
